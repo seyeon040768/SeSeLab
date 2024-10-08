@@ -1,8 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
+from scipy.interpolate import CubicSpline
 
 from typing import Tuple, Callable
+
 
 def visualize_path(ax: plt.Axes, 
                    left_cones_sorted: np.ndarray, right_cones_sorted: np.ndarray, 
@@ -36,6 +38,22 @@ def visualize_path(ax: plt.Axes,
     ax.scatter(left_paths[:, 0], left_paths[:, 1], c="y")
     ax.scatter(right_paths[:, 0], right_paths[:, 1], c="y")
     ax.scatter(paths[:, 0], paths[:, 1], c="black")
+
+
+def get_angle_between_vectors(m_vec1: np.ndarray, m_vec2: np.ndarray) -> np.ndarray:
+    """Get angle between two vecotrs.
+
+    Args:
+        m_vec1 (np.ndarray): matrix of vector1
+        m_vec2 (np.ndarray): matrix of vector2
+
+    Returns:
+        np.ndarray: angles(degree)
+    """
+    dot = np.einsum('ij,ij->i', m_vec1, m_vec2)
+    norm_vec1, norm_vec2 = np.linalg.norm(m_vec1, axis=1), np.linalg.norm(m_vec2, axis=1)
+    theta = np.arccos(np.clip(dot / (norm_vec1 * norm_vec2), -1.0, 1.0))
+    return np.rad2deg(theta)
 
 
 def detect_outlier_IQR(data: np.ndarray, iqr_weight: float = 1.5) -> Tuple[np.ndarray, np.ndarray]:
@@ -161,6 +179,9 @@ def generate_path(left_cones: np.ndarray, right_cones: np.ndarray, track_width: 
     m_left_direction = left_cones_sorted[1:] - left_cones_sorted[:-1]
     m_right_direction = right_cones_sorted[1:] - right_cones_sorted[:-1]
 
+    left_direction_angles = get_angle_between_vectors(m_left_direction[:-1], m_left_direction[1:])
+    right_direction_angles = get_angle_between_vectors(m_right_direction[:-1], m_right_direction[1:])
+
     m_left_perpendicular = m_left_direction[:, [1, 0]] / np.linalg.norm(m_left_direction, axis=1)[:, np.newaxis]
     m_left_perpendicular[:, 1] = -m_left_perpendicular[:, 1]
     m_right_perpendicular = m_right_direction[:, [1, 0]] / np.linalg.norm(m_right_direction, axis=1)[:, np.newaxis]
@@ -178,6 +199,7 @@ def generate_path(left_cones: np.ndarray, right_cones: np.ndarray, track_width: 
     else:
         paths = (left_paths + right_paths) / 2
 
+
     if b_visualize:
         ax = plt.subplot()
         visualize_path(ax, left_cones_sorted, right_cones_sorted, m_left_direction, m_right_direction, m_left_perpendicular, m_right_perpendicular, left_paths, right_paths, paths)
@@ -193,7 +215,7 @@ def generate_path(left_cones: np.ndarray, right_cones: np.ndarray, track_width: 
 # right_cones = left_cones + np.array([1, -0.5])
 # right_cones = right_cones[:-1]
 
-# left_cones = np.array([(174, 231), (205, 215), (311, 192), (330, 222), (338, 260), (358, 289), (374, 310), (406, 337), (460, 332), (499, 309), (519, 281), (538, 241), (564, 195), (577, 162)])
-# right_cones = np.array([(157, 197), (194, 174), (232, 151), (268, 132), (307, 126), (343, 153), (363, 193), (375, 231), (386, 262), (415, 289), (465, 277), (494, 251), (517, 211), (536, 165), (549, 121)])
+left_cones = np.array([(174, 231), (205, 215), (311, 192), (330, 222), (338, 260), (358, 289), (374, 310), (406, 337), (460, 332), (499, 309), (519, 281), (538, 241), (564, 195), (577, 162)])
+right_cones = np.array([(157, 197), (194, 174), (232, 151), (268, 132), (307, 126), (343, 153), (363, 193), (375, 231), (386, 262), (415, 289), (465, 277), (494, 251), (517, 211), (536, 165), (549, 121)])
 
-# generate_path(left_cones, right_cones)
+generate_path(left_cones, right_cones)
