@@ -1,7 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import shutil
 
 from triangulation import triangulation2d_test
+
+import numpy as np
 
 def get_camera_pos2d(camera_pos: np.ndarray, rotation: float, fov: float, object_pos: np.ndarray):
     fov_half = fov / 2
@@ -26,7 +29,11 @@ def get_camera_pos2d(camera_pos: np.ndarray, rotation: float, fov: float, object
     v_left_to_obj = v_cam_to_obj - v_left
     v_left_to_right = v_right - v_left
 
-    return np.linalg.norm(v_left_to_obj) / np.linalg.norm(v_left_to_right)
+    pos_of_view = np.linalg.norm(v_left_to_obj) / np.linalg.norm(v_left_to_right)
+    if (np.dot(v_left_to_obj, v_left_to_right) < 0):
+        pos_of_view = -pos_of_view
+
+    return pos_of_view
 
 def plot_camera_fov(camera_pos, rotation, fov, color, length: float = 5):
     angle_left = rotation + fov / 2
@@ -39,18 +46,16 @@ def plot_camera_fov(camera_pos, rotation, fov, color, length: float = 5):
     plt.plot([camera_pos[0], fov_pos_right[0]], [camera_pos[1], fov_pos_right[1]], f'{color}--', alpha=0.5)
 
 cam1_pos = np.array([-4, 0])
-cam1_rotation = 0
-cam1_fov = np.deg2rad(90)
+cam1_rotation = np.deg2rad(95)
+cam1_fov = np.deg2rad(100)
 cam1_fov_half = cam1_fov / 2
 
 cam2_pos = np.array([4, 0])
-cam2_rotation = np.pi / 2
-cam2_fov = np.deg2rad(90)
+cam2_rotation = np.deg2rad(85)
+cam2_fov = np.deg2rad(100)
 cam2_fov_half = cam2_fov / 2
 
 object_pos = np.array([0, 5])
-
-fov2 = np.deg2rad(90)
 
 obj1_pos = get_camera_pos2d(cam1_pos, cam1_rotation, cam1_fov, object_pos)
 obj2_pos = get_camera_pos2d(cam2_pos, cam2_rotation, cam2_fov, object_pos)
@@ -59,9 +64,9 @@ obj2_pos = get_camera_pos2d(cam2_pos, cam2_rotation, cam2_fov, object_pos)
 estimated_pos = triangulation2d_test(cam1_pos, cam1_rotation, cam1_fov, cam2_pos, cam2_rotation, cam2_fov, obj1_pos, obj2_pos)
 
 
-print(f"camera1\t\tpos\t\tfov(degree)\tobject\n\t\t({cam1_pos[0]:.2f}, {cam1_pos[1]:.2f})\t\t{np.rad2deg(cam1_fov):.2f}\t\t{obj1_pos:.2f}")
-print(f"camera2\t\tpos\t\tfov(degree)\tobject\n\t\t({cam2_pos[0]:.2f}, {cam2_pos[1]:.2f})\t\t{np.rad2deg(cam2_fov):.2f}\t\t{obj2_pos:.2f}")
-print("----------------------------------------------------------------------------")
+print(f"camera1\t\tpos\t\trotation\tfov(degree)\tobject\n\t\t({cam1_pos[0]:.2f}, {cam1_pos[1]:.2f})\t{np.rad2deg(cam1_rotation):.2f}\t\t{np.rad2deg(cam1_fov):.2f}\t\t{obj1_pos:.2f}")
+print(f"camera2\t\tpos\t\trotation\tfov(degree)\tobject\n\t\t({cam2_pos[0]:.2f}, {cam2_pos[1]:.2f})\t{np.rad2deg(cam2_rotation):.2f}\t\t{np.rad2deg(cam2_fov):.2f}\t\t{obj2_pos:.2f}")
+print("-" * shutil.get_terminal_size().columns)
 print(f"object_pos\testimated_pos\n({object_pos[0]:.2f}, {object_pos[1]:.2f})\t({estimated_pos[0]:.2f}, {estimated_pos[1]:.2f})")
 
 
