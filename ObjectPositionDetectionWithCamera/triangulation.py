@@ -3,25 +3,25 @@ import matplotlib.pyplot as plt
 
 from typing import Tuple
 
-def get_angle_from_object_2d(cam_fov, obj_pos):
+def get_angle_from_object_2d(rotation, cam_fov, obj_pos):
     angle1 = obj_pos - 0.5
     tan_theta = abs(angle1) / 0.5 * np.tan(cam_fov / 2)
     theta = np.arctan(tan_theta)
     if angle1 < 0:
-        theta = np.pi / 2 + theta
+        theta = rotation + theta
     else:
-        theta = np.pi / 2 - theta
+        theta = rotation - theta
 
     return theta
 
-def triangulation2d_test(cam1_pos, cam2_pos, obj1_pos, obj2_pos, cam1_fov, cam2_fov):
+def triangulation2d_test(cam1_pos, cam1_rotation, cam1_fov, cam2_pos, cam2_rotation, cam2_fov, obj1_pos, obj2_pos):
     if cam1_pos[0] > cam2_pos[0]:
         cam1_pos, cam2_pos = cam2_pos, cam1_pos
         obj1_pos, obj2_pos = obj2_pos, obj1_pos
         cam1_fov, cam2_fov = cam2_fov, cam1_fov
 
-    theta1 = get_angle_from_object_2d(cam1_fov, obj1_pos)
-    theta2 = get_angle_from_object_2d(cam2_fov, obj2_pos)
+    theta1 = get_angle_from_object_2d(cam1_rotation, cam1_fov, obj1_pos)
+    theta2 = get_angle_from_object_2d(cam2_rotation, cam2_fov, obj2_pos)
 
     alpha = theta1
     beta = np.pi - theta2

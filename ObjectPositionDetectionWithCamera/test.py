@@ -56,7 +56,7 @@ obj1_pos = get_camera_pos2d(cam1_pos, cam1_rotation, cam1_fov, object_pos)
 obj2_pos = get_camera_pos2d(cam2_pos, cam2_rotation, cam2_fov, object_pos)
 
 
-estimated_pos = triangulation2d_test(cam1_pos, cam2_pos, obj1_pos, obj2_pos, cam1_fov, cam2_fov)
+estimated_pos = triangulation2d_test(cam1_pos, cam1_rotation, cam1_fov, cam2_pos, cam2_rotation, cam2_fov, obj1_pos, obj2_pos)
 
 
 print(f"camera1\t\tpos\t\tfov(degree)\tobject\n\t\t({cam1_pos[0]:.2f}, {cam1_pos[1]:.2f})\t\t{np.rad2deg(cam1_fov):.2f}\t\t{obj1_pos:.2f}")
