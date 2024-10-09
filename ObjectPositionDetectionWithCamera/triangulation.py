@@ -5,14 +5,14 @@ from typing import Tuple
 
 def get_angle_from_object_2d(cam_fov, obj_pos):
     angle1 = obj_pos - 0.5
-    tan_theta0 = abs(angle1) / 0.5 * np.tan(cam_fov / 2)
-    theta0 = np.arctan(tan_theta0)
+    tan_theta = abs(angle1) / 0.5 * np.tan(cam_fov / 2)
+    theta = np.arctan(tan_theta)
     if angle1 < 0:
-        theta0 = np.pi / 2 + theta0
+        theta = np.pi / 2 + theta
     else:
-        theta0 = np.pi / 2 - theta0
+        theta = np.pi / 2 - theta
 
-    return theta0
+    return theta
 
 def triangulation2d_test(cam1_pos, cam2_pos, obj1_pos, obj2_pos, cam1_fov, cam2_fov):
     if cam1_pos[0] > cam2_pos[0]:
@@ -56,10 +56,10 @@ def triangulation2d(*cameraPos_objectPos_fov: Tuple[np.ndarray, np.ndarray, floa
 
 cam1_pos = np.array([-4, 0])
 cam2_pos = np.array([4, 0])
-object_pos = np.array([0, 5])
+object_pos = np.array([4, 1])
 
 fov1 = np.deg2rad(90)
-fov2 = np.deg2rad(100)
+fov2 = np.deg2rad(90)
 
 obj1_pos = (object_pos[1] * np.tan(fov1 / 2) + object_pos[0] - cam1_pos[0]) / (object_pos[1] * np.tan(fov1 / 2) * 2)
 obj2_pos = (object_pos[1] * np.tan(fov2 / 2) + object_pos[0] - cam2_pos[0]) / (object_pos[1] * np.tan(fov2 / 2) * 2)
@@ -68,6 +68,11 @@ obj2_pos = (object_pos[1] * np.tan(fov2 / 2) + object_pos[0] - cam2_pos[0]) / (o
 estimated_pos = triangulation2d_test(cam1_pos, cam2_pos, obj1_pos, obj2_pos, fov1, fov2)
 
 
+
+print(f"camera1\t\tpos\t\tfov(degree)\tobject\n\t\t({cam1_pos[0]:.2f}, {cam1_pos[1]:.2f})\t\t{np.rad2deg(fov1):.2f}\t\t{obj1_pos:.2f}")
+print(f"camera2\t\tpos\t\tfov(degree)\tobject\n\t\t({cam2_pos[0]:.2f}, {cam2_pos[1]:.2f})\t\t{np.rad2deg(fov2):.2f}\t\t{obj2_pos:.2f}")
+print("----------------------------------------------------------------------------")
+print(f"object_pos\testimated_pos\n({object_pos[0]:.2f}, {object_pos[1]:.2f})\t({estimated_pos[0]:.2f}, {estimated_pos[1]:.2f})")
 
 
 plt.figure(figsize=(10, 6))
