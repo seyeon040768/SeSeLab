@@ -1,7 +1,9 @@
 import numpy as np
-import matplotlib.pyplot as plt
 
 from typing import Tuple
+
+def get_rotation_matrix_2d(theta: float) -> np.ndarray:
+    return np.array([[np.cos(theta), np.sin(theta)], [-np.sin(theta), np.cos(theta)]])
 
 def get_angle_from_object_2d(rotation, cam_fov, obj_pos):
     angle1 = obj_pos - 0.5
@@ -38,6 +40,19 @@ def triangulation2d(cam1_pos, cam1_rotation, cam1_fov, cam2_pos, cam2_rotation, 
     estimated_pos = np.mean((estimated_pos1, estimated_pos2), axis=0)
 
     return estimated_pos
+
+def triangulation3d(cam1_pos: np.ndarray, cam1_rotation: np.ndarray, cam1_fov: float, img1_shape: Tuple,
+                    cam2_pos: np.ndarray, cam2_rotation: np.ndarray, cam2_fov: float, img2_shape: Tuple,
+                    obj1_pos: np.ndarray, obj2_pos: np.ndarray):
+    m_x_rotation1 = get_rotation_matrix_2d(cam1_rotation[0])
+    m_x_rotation2 = get_rotation_matrix_2d(cam2_rotation[0])
+
+    obj1_pos_modified = obj1_pos @ m_x_rotation1
+    obj2_pos_modified = obj2_pos @ m_x_rotation2
+
+    
+
+    estimated_pos_y1 = triangulation2d(cam1_pos[[0, 1]], cam1_rotation[1], cam1_fov)
 
     
 
