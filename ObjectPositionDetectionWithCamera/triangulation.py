@@ -14,7 +14,7 @@ def get_angle_from_object_2d(rotation, cam_fov, obj_pos):
 
     return theta
 
-def triangulation2d_test(cam1_pos, cam1_rotation, cam1_fov, cam2_pos, cam2_rotation, cam2_fov, obj1_pos, obj2_pos):
+def triangulation2d(cam1_pos, cam1_rotation, cam1_fov, cam2_pos, cam2_rotation, cam2_fov, obj1_pos, obj2_pos):
     if cam1_pos[0] > cam2_pos[0]:
         cam1_pos, cam2_pos = cam2_pos, cam1_pos
         obj1_pos, obj2_pos = obj2_pos, obj1_pos
@@ -41,14 +41,4 @@ def triangulation2d_test(cam1_pos, cam1_rotation, cam1_fov, cam2_pos, cam2_rotat
 
     
 
-
-        
-
-
-def triangulation2d(*cameraPos_objectPos_fov: Tuple[np.ndarray, np.ndarray, float]) -> np.ndarray:
-    if len(cameraPos_objectPos_fov) < 2:
-        raise ValueError("args의 길이가 2 이상이여야 합니다.")
-    
-    for camera_pos, object_pos, fov in cameraPos_objectPos_fov:
-        pass
 
