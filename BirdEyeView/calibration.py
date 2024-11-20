@@ -208,6 +208,8 @@ def inverse_project_points(points: np.ndarray, m_transformation: np.ndarray) -> 
     Returns:
         np.ndarray: 역투영된 3D 점들의 배열 (Nx4)
     """
+    points = np.concatenate([points[:, :3], np.ones((points.shape[0], 1))], axis=1)
+
     points[:, 0] = points[:, 0] * points[:, 2]
     points[:, 1] = points[:, 1] * points[:, 2]
 
@@ -222,24 +224,14 @@ if __name__ == "__main__":
     image = cv2.imread("um_000012.png")
     image_shape = (image.shape[1], image.shape[0])
 
-    points = np.fromfile("um_000012.bin", dtype=np.float32).reshape(-1, 4)
-    with open('um_000000.txt', 'r') as f:
-        lines = f.readlines()
-
-    matrices = {}
-    for line in lines:
-        key, values = line.split(':')
-        values = np.array([float(x) for x in values.split()])
-
-        if key.startswith('P'):
-            matrices[key] = values.reshape(3, 4)
-        elif key == 'R0_rect':
-            matrices[key] = np.eye(4)
-            matrices[key][:3, :3] = values.reshape(3, 3)
-        else:
-            matrices[key] = np.eye(4)
-            matrices[key][:3, :4] = values.reshape(3, 4)
-
+    points = np.array([
+        [6.3, 0, -1.65],
+        [6.3, 15, -1.65],
+        [6.3, -15, -1.65],
+        [100.0, 0, -1.65],
+        [100.0, 15, -1.65],
+        [100.0, -15, -1.65],
+    ])
 
     rotation_degree = (90, -90, 0)
     # translation = (0.06, -0.08, -0.27)
@@ -247,29 +239,15 @@ if __name__ == "__main__":
     fov_degree = 85.7
 
     m_transformation = get_transformation_matrix(image_shape, np.deg2rad(fov_degree), np.deg2rad(rotation_degree), translation).T
-    m_transformation_kitti = (matrices['P2'] @ matrices['R0_rect'] @ matrices['Tr_velo_to_cam']).T
 
     projected_points, valid_indices = project_points(points, m_transformation, image_shape)
-    projected_points_kitti, valid_indices_kitti = project_points(points, m_transformation_kitti, image_shape)
     
-    # Create a figure with two subplots side by side
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 8))
-    
-    # Plot custom projection
-    ax1.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-    custom_points = projected_points[:, :2]
-    ax1.scatter(custom_points[:, 0], custom_points[:, 1], c='y', s=1, alpha=1)
-    ax1.set_title('Custom Projection', color='green', fontsize=14)
-    ax1.axis('off')
-    
-    # Plot KITTI projection
-    ax2.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-    kitti_points = projected_points_kitti[:, :2]
-    ax2.scatter(kitti_points[:, 0], kitti_points[:, 1], c='y', s=1, alpha=1)
-    ax2.set_title('KITTI Projection', color='red', fontsize=14)
-    ax2.axis('off')
-    
-    plt.tight_layout()
-    plt.show()
+    for point in projected_points:
+        cv2.circle(image, (int(point[0]), int(point[1])), 5, (0, 0, 255), -1)
+
+    cv2.imshow("image", image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
     
 
