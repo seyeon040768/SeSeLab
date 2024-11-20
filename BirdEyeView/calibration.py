@@ -60,29 +60,27 @@ def get_rotation_matrix_z(theta: float) -> np.ndarray:
 
     return m_rotation
 
-def get_rotation_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
+def get_rotation_matrix(rotation: np.ndarray) -> np.ndarray:
     """
-    Roll, Pitch, Yaw 각도를 이용하여 3차원 회전 행렬을 생성합니다.
+    3차원 회전 벡터를 이용하여 3차원 회전 행렬을 생성합니다.
     Args:
-        roll (float): X축 회전 각도 (라디안)
-        pitch (float): Y축 회전 각도 (라디안)
-        yaw (float): Z축 회전 각도 (라디안)
+        rotation (np.ndarray): [roll, pitch, yaw] 회전 벡터 (라디안)
     Returns:
         np.ndarray: 4x4 회전 행렬
     """
+    roll, pitch, yaw = rotation
     m_rotation = get_rotation_matrix_z(yaw) @ get_rotation_matrix_y(pitch) @ get_rotation_matrix_x(roll)
     return m_rotation
 
-def get_translation_matrix(x: float, y: float, z: float) -> np.ndarray:
+def get_translation_matrix(translation: np.ndarray) -> np.ndarray:
     """
     이동 행렬을 생성합니다.
     Args:
-        x (float): X축 이동량
-        y (float): Y축 이동량
-        z (float): Z축 이동량
+        translation (np.ndarray): [x, y, z] 이동 벡터
     Returns:
         np.ndarray: 4x4 이동 행렬
     """
+    x, y, z = translation
     m_translation = np.array([
         [1, 0, 0, x],
         [0, 1, 0, y],
@@ -91,20 +89,16 @@ def get_translation_matrix(x: float, y: float, z: float) -> np.ndarray:
     ])
     return m_translation
 
-def get_extrinsic_matrix(roll: float, pitch: float, yaw: float, x: float, y: float, z: float) -> np.ndarray:
+def get_extrinsic_matrix(rotation: np.ndarray, translation: np.ndarray) -> np.ndarray:
     """
     외부 파라미터 행렬을 생성합니다.
     Args:
-        roll (float): X축 회전 각도 (라디안)
-        pitch (float): Y축 회전 각도 (라디안)
-        yaw (float): Z축 회전 각도 (라디안)
-        x (float): X축 이동량
-        y (float): Y축 이동량
-        z (float): Z축 이동량
+        rotation (np.ndarray): [roll, pitch, yaw] 회전 벡터 (라디안)
+        translation (np.ndarray): [x, y, z] 이동 벡터
     Returns:
         np.ndarray: 4x4 외부 파라미터 행렬
     """
-    m_extrinsic = get_translation_matrix(x, y, z) @ get_rotation_matrix(roll, pitch, yaw)
+    m_extrinsic = get_translation_matrix(translation) @ get_rotation_matrix(rotation)
     return m_extrinsic
 
 def get_intrinsic_matrix(fov: float, aspect: float) -> np.ndarray:
@@ -118,6 +112,8 @@ def get_intrinsic_matrix(fov: float, aspect: float) -> np.ndarray:
         np.ndarray: 4x4 내부 파라미터 행렬
     """
     focal_length = np.sqrt(1 + aspect**2) / np.tan(fov / 2)
+
+    # 카메라에 따라 fx, fy를 사용하는 것이 더 정확한 경우도 있음
     fov_y = 2 * np.arctan(1 / focal_length)
     fov_x = 2 * np.arctan(aspect / focal_length)
 
@@ -128,8 +124,8 @@ def get_intrinsic_matrix(fov: float, aspect: float) -> np.ndarray:
     v0 = 1
 
     m_intrinsic = np.array([
-        [fx, 0, u0, 0],
-        [0, fy, v0, 0],
+        [focal_length, 0, u0, 0],
+        [0, focal_length, v0, 0],
         [0, 0, 1, 0],
         [0, 0, 0, 1]
     ])
@@ -153,24 +149,19 @@ def get_expand_matrix(image_height: int) -> np.ndarray:
 
     return m_expand
 
-def get_transformation_matrix(image_shape: tuple[int, int], fov: float, 
-                            roll: float, pitch: float, yaw: float,
-                            x: float, y: float, z: float) -> np.ndarray:
+def get_transformation_matrix(image_shape: tuple[int, int], fov: float,
+                            rotation: np.ndarray, translation: np.ndarray) -> np.ndarray:
     """
     3D 좌표를 2D 이미지 좌표로 변환하는 변환 행렬을 생성합니다.
     Args:
         image_shape (tuple[int, int]): 이미지 크기 (너비, 높이)
         fov (float): 시야각 (라디안)
-        roll (float): X축 회전 각도 (라디안)
-        pitch (float): Y축 회전 각도 (라디안)
-        yaw (float): Z축 회전 각도 (라디안)
-        x (float): X축 이동량
-        y (float): Y축 이동량
-        z (float): Z축 이동량
+        rotation (np.ndarray): [roll, pitch, yaw] 회전 벡터 (라디안)
+        translation (np.ndarray): [x, y, z] 이동 벡터
     Returns:
         np.ndarray: 4x4 변환 행렬
     """
-    m_extrinsic = get_extrinsic_matrix(roll, pitch, yaw, x, y, z)
+    m_extrinsic = get_extrinsic_matrix(rotation, translation)
     m_intrinsic = get_intrinsic_matrix(fov, image_shape[0] / image_shape[1])
     m_expand = get_expand_matrix(image_shape[1])
 
@@ -226,11 +217,12 @@ def inverse_project_points(points: np.ndarray, m_transformation: np.ndarray) -> 
 
 if __name__ == "__main__":
     import cv2
-    image = cv2.imread("um_000000.png")
-    image_shape = (image.shape[1], image.shape[0])
-    print(image_shape)
+    import matplotlib.pyplot as plt
 
-    points = np.fromfile("um_000000.bin", dtype=np.float32).reshape(-1, 4)
+    image = cv2.imread("um_000012.png")
+    image_shape = (image.shape[1], image.shape[0])
+
+    points = np.fromfile("um_000012.bin", dtype=np.float32).reshape(-1, 4)
     with open('um_000000.txt', 'r') as f:
         lines = f.readlines()
 
@@ -248,28 +240,36 @@ if __name__ == "__main__":
             matrices[key] = np.eye(4)
             matrices[key][:3, :4] = values.reshape(3, 4)
 
-    print(matrices['P2'])
-    print(matrices['R0_rect'])
-    print(matrices['Tr_velo_to_cam'])
 
-    m_transformation = matrices['P2'] @ matrices['R0_rect'] @ matrices['Tr_velo_to_cam']
-    
-    # projected_points, valid_indices = project_points(points, m_transformation.T, image_shape)
-    
-
-    # rotation_degree = (90, -90, 0)
+    rotation_degree = (90, -90, 0)
     # translation = (0.06, -0.08, -0.27)
-    # fov_degree = 55
+    translation = (0.06, -7.631618000000e-02, -2.717806000000e-01)
+    fov_degree = 85.7
 
-    # m_transformation = get_transformation_matrix(image_shape, np.deg2rad(fov_degree), *np.deg2rad(rotation_degree), *translation).T
+    m_transformation = get_transformation_matrix(image_shape, np.deg2rad(fov_degree), np.deg2rad(rotation_degree), translation).T
+    m_transformation_kitti = (matrices['P2'] @ matrices['R0_rect'] @ matrices['Tr_velo_to_cam']).T
 
-    # projected_points, valid_indices = project_points(points, m_transformation, image_shape)
+    projected_points, valid_indices = project_points(points, m_transformation, image_shape)
+    projected_points_kitti, valid_indices_kitti = project_points(points, m_transformation_kitti, image_shape)
     
-    # for point in projected_points[:, :2].astype(int):
-    #     cv2.circle(image, (point[0], point[1]), 1, (0, 255, 0), -1)
- 
-    # cv2.imshow('Projected Points', image)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+    # Create a figure with two subplots side by side
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 8))
+    
+    # Plot custom projection
+    ax1.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    custom_points = projected_points[:, :2]
+    ax1.scatter(custom_points[:, 0], custom_points[:, 1], c='y', s=1, alpha=1)
+    ax1.set_title('Custom Projection', color='green', fontsize=14)
+    ax1.axis('off')
+    
+    # Plot KITTI projection
+    ax2.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    kitti_points = projected_points_kitti[:, :2]
+    ax2.scatter(kitti_points[:, 0], kitti_points[:, 1], c='y', s=1, alpha=1)
+    ax2.set_title('KITTI Projection', color='red', fontsize=14)
+    ax2.axis('off')
+    
+    plt.tight_layout()
+    plt.show()
     
 
