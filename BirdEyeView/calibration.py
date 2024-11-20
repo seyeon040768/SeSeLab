@@ -115,7 +115,7 @@ def get_intrinsic_matrix(fov: float, aspect: float) -> np.ndarray:
         fov (float): 대각선 FOV (라디안)
         aspect (float): 투영 평면의 가로세로 비율
     Returns:
-        np.ndarray: 3x4 내부 파라미터 행렬
+        np.ndarray: 4x4 내부 파라미터 행렬
     """
     focal_length = np.sqrt(1 + aspect**2) / np.tan(fov / 2)
     fov_y = 2 * np.arctan(1 / focal_length)
@@ -130,7 +130,8 @@ def get_intrinsic_matrix(fov: float, aspect: float) -> np.ndarray:
     m_intrinsic = np.array([
         [fx, 0, u0, 0],
         [0, fy, v0, 0],
-        [0, 0, 1, 0]
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
     ])
 
     return m_intrinsic
@@ -141,12 +142,13 @@ def get_expand_matrix(image_height: int) -> np.ndarray:
     Args:
         image_height (int): 이미지 높이
     Returns:
-        np.ndarray: 3x3 확장 행렬
+        np.ndarray: 4x4 확장 행렬
     """
     m_expand = np.array([
-        [image_height / 2, 0, 0],
-        [0, image_height / 2, 0],
-        [0, 0, 1]
+        [image_height / 2, 0, 0, 0],
+        [0, image_height / 2, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
     ])
 
     return m_expand
@@ -189,8 +191,7 @@ def project_points(points: np.ndarray, m_transformation: np.ndarray,
             - 투영된 2D 점들의 배열
             - 유효한 점들의 인덱스
     """
-    if points.shape[1] == 3:
-        points = np.concatenate([points, np.ones((points.shape[0], 1))], axis=1)
+    points = np.concatenate([points[:, :3], np.ones((points.shape[0], 1))], axis=1)
 
     points = points @ m_transformation
     points[:, 0] = points[:, 0] / points[:, 2]
@@ -207,21 +208,68 @@ def project_points(points: np.ndarray, m_transformation: np.ndarray,
 
     return points, valid_indices
 
+def inverse_project_points(points: np.ndarray, m_transformation: np.ndarray) -> np.ndarray:
+    """
+    2D 이미지 평면의 점들을 3D 공간으로 역투영합니다.
+    Args:
+        points (np.ndarray): 2D 점들의 배열 (Nx4, 3번째 열은 깊이값)
+        m_transformation (np.ndarray): 4x4 변환 행렬
+    Returns:
+        np.ndarray: 역투영된 3D 점들의 배열 (Nx4)
+    """
+    points[:, 0] = points[:, 0] * points[:, 2]
+    points[:, 1] = points[:, 1] * points[:, 2]
+
+    points = points @ np.linalg.inv(m_transformation)
+
+    return points
+
 if __name__ == "__main__":
-    image_shape = (640, 480)
-    rotation_degree = (90, -90, 0)
-    translation = (0, 0, 0)
-    fov_degree = 73.7
+    import cv2
+    image = cv2.imread("um_000000.png")
+    image_shape = (image.shape[1], image.shape[0])
+    print(image_shape)
 
-    m_transformation = get_transformation_matrix(image_shape, np.deg2rad(fov_degree), *np.deg2rad(rotation_degree), *translation).T
+    points = np.fromfile("um_000000.bin", dtype=np.float32).reshape(-1, 4)
+    with open('um_000000.txt', 'r') as f:
+        lines = f.readlines()
 
-    points = np.array([
-        [10, 2, 1],
-        [10, 1, 1],
-        [-1, -1, 3]
-    ])
+    matrices = {}
+    for line in lines:
+        key, values = line.split(':')
+        values = np.array([float(x) for x in values.split()])
 
-    projected_points, valid_indices = project_points(points, m_transformation, image_shape)
+        if key.startswith('P'):
+            matrices[key] = values.reshape(3, 4)
+        elif key == 'R0_rect':
+            matrices[key] = np.eye(4)
+            matrices[key][:3, :3] = values.reshape(3, 3)
+        else:
+            matrices[key] = np.eye(4)
+            matrices[key][:3, :4] = values.reshape(3, 4)
 
-    print(projected_points)
-    print(valid_indices)
+    print(matrices['P2'])
+    print(matrices['R0_rect'])
+    print(matrices['Tr_velo_to_cam'])
+
+    m_transformation = matrices['P2'] @ matrices['R0_rect'] @ matrices['Tr_velo_to_cam']
+    
+    # projected_points, valid_indices = project_points(points, m_transformation.T, image_shape)
+    
+
+    # rotation_degree = (90, -90, 0)
+    # translation = (0.06, -0.08, -0.27)
+    # fov_degree = 55
+
+    # m_transformation = get_transformation_matrix(image_shape, np.deg2rad(fov_degree), *np.deg2rad(rotation_degree), *translation).T
+
+    # projected_points, valid_indices = project_points(points, m_transformation, image_shape)
+    
+    # for point in projected_points[:, :2].astype(int):
+    #     cv2.circle(image, (point[0], point[1]), 1, (0, 255, 0), -1)
+ 
+    # cv2.imshow('Projected Points', image)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+    
+
