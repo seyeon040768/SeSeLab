@@ -77,7 +77,6 @@ def make_bev_image(image: np.ndarray, map_matrix: np.ndarray) -> np.ndarray:
     return bev_image
 
 if __name__ == "__main__":
-    # Create a Profile object
     pr = cProfile.Profile()
     
     image_path = "./um_000012.png"
@@ -94,7 +93,6 @@ if __name__ == "__main__":
     y_range = (-10, 10)
     bev_pixel_interval = (0.05, 0.05)
 
-    # Start profiling
     pr.enable()
     
     map_matrix = get_map_matrix(m_transformation, x_range, y_range, bev_pixel_interval, camera_height)
