@@ -42,6 +42,7 @@ def make_bev_image(image: np.ndarray, map_matrix: np.ndarray) -> np.ndarray:
     Returns:
         np.ndarray: Bird's Eye View로 변환된 이미지
     """
+    image_shape = (image.shape[1], image.shape[0])
     output_height = map_matrix.shape[0]
     output_width = map_matrix.shape[1]
     projected_points = map_matrix.reshape(-1, 2)
@@ -84,7 +85,8 @@ if __name__ == "__main__":
     image_shape = (image.shape[1], image.shape[0])
 
     rotation_degree = (90, -90, 0)
-    translation = (0.06, -7.631618000000e-02, -2.717806000000e-01)
+    # translation = (0.06, -7.631618000000e-02, -2.717806000000e-01) # lidar 위치 기준
+    translation = (0, 0, 0) # camera 위치 기준
     fov_degree = 85.7
     camera_height = 1.65
     m_transformation = calibration.get_transformation_matrix(image_shape, np.deg2rad(fov_degree), np.deg2rad(rotation_degree), translation).T
