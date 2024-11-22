@@ -5,7 +5,7 @@ import calibration
 import bird_eye_view
 
 if __name__ == "__main__":
-    image_path = "./um_000012.png"
+    image_path = "./um_000001.png"
     image = cv2.imread(image_path)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     image_shape = (image.shape[1], image.shape[0])
@@ -31,24 +31,7 @@ if __name__ == "__main__":
 
     edge = cv2.Canny(blur, 50, 150)
 
-    lines = cv2.HoughLinesP(
-        edge,
-        rho=1,
-        theta=np.pi/180,
-        threshold=50,
-        minLineLength=50,
-        maxLineGap=10
-    )
-
-    line_image = np.zeros_like(bev_image)
-    if lines is not None:
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            cv2.line(line_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    
-    result = cv2.addWeighted(bev_image, 0.8, line_image, 1, 0)
-
-    cv2.imshow("lines", result)
+    cv2.imshow("lines", bev_image)
 
     cv2.waitKey()
     cv2.destroyAllWindows()
