@@ -89,16 +89,17 @@ def get_translation_matrix(translation: np.ndarray) -> np.ndarray:
     ])
     return m_translation
 
-def get_extrinsic_matrix(rotation: np.ndarray, translation: np.ndarray) -> np.ndarray:
+def get_extrinsic_matrix(axis_rotation: np.ndarray, translation: np.ndarray, rotation: np.ndarray) -> np.ndarray:
     """
     외부 파라미터 행렬을 생성합니다.
     Args:
-        rotation (np.ndarray): [roll, pitch, yaw] 회전 벡터 (라디안)
+        axis_rotation (np.ndarray): [roll, pitch, yaw] 회전 벡터 (라디안)
         translation (np.ndarray): [x, y, z] 이동 벡터
+        rotation (np.ndarray): [roll, pitch, yaw] 회전 벡터 (라디안)
     Returns:
         np.ndarray: 4x4 외부 파라미터 행렬
     """
-    m_extrinsic = get_translation_matrix(translation) @ get_rotation_matrix(rotation)
+    m_extrinsic = get_rotation_matrix(rotation) @ get_translation_matrix(translation) @ get_rotation_matrix(axis_rotation)
     return m_extrinsic
 
 def get_intrinsic_matrix(fov: float, aspect: float) -> np.ndarray:
@@ -150,18 +151,19 @@ def get_expand_matrix(image_height: int) -> np.ndarray:
     return m_expand
 
 def get_transformation_matrix(image_shape: tuple[int, int], fov: float,
-                            rotation: np.ndarray, translation: np.ndarray) -> np.ndarray:
+                            axis_rotation: np.ndarray, translation: np.ndarray, rotation: np.ndarray) -> np.ndarray:
     """
     3D 좌표를 2D 이미지 좌표로 변환하는 변환 행렬을 생성합니다.
     Args:
         image_shape (tuple[int, int]): 이미지 크기 (너비, 높이)
         fov (float): 시야각 (라디안)
-        rotation (np.ndarray): [roll, pitch, yaw] 회전 벡터 (라디안)
+        axis_rotation (np.ndarray): [roll, pitch, yaw] 회전 벡터 (라디안)
         translation (np.ndarray): [x, y, z] 이동 벡터
+        rotation (np.ndarray): [roll, pitch, yaw] 회전 벡터 (라디안)
     Returns:
         np.ndarray: 4x4 변환 행렬
     """
-    m_extrinsic = get_extrinsic_matrix(rotation, translation)
+    m_extrinsic = get_extrinsic_matrix(axis_rotation, translation, rotation)
     m_intrinsic = get_intrinsic_matrix(fov, image_shape[0] / image_shape[1])
     m_expand = get_expand_matrix(image_shape[1])
 

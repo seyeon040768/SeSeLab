@@ -80,16 +80,20 @@ def make_bev_image(image: np.ndarray, map_matrix: np.ndarray) -> np.ndarray:
 if __name__ == "__main__":
     pr = cProfile.Profile()
     
-    image_path = "./um_000012.png"
+    image_path = "./1.jpg"
     image = cv2.imread(image_path)
     image_shape = (image.shape[1], image.shape[0])
 
-    rotation_degree = (90, -90, 0)
-    # translation = (0.06, -7.631618000000e-02, -2.717806000000e-01) # lidar 위치 기준
-    translation = (0, 0, 0) # camera 위치 기준
+    axis_rotation_degree = (90, -90, 0)
+    translation = (0, 0, 0)
+    rotation_degree = (8.2, 0, 0)
     fov_degree = 85.7
     camera_height = 1.65
-    m_transformation = calibration.get_transformation_matrix(image_shape, np.deg2rad(fov_degree), np.deg2rad(rotation_degree), translation).T
+
+    axis_rotation_radian = np.deg2rad(axis_rotation_degree)
+    rotation_radian = np.deg2rad(rotation_degree)
+    fov_radian = np.deg2rad(fov_degree)
+    m_transformation = calibration.get_transformation_matrix(image_shape, fov_radian, axis_rotation_radian, translation, rotation_radian).T
 
     x_range = (6.3, 50)
     y_range = (-10, 10)

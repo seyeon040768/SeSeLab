@@ -112,7 +112,7 @@ def get_intrinsic_matrix(fov: float, aspect: float) -> np.ndarray:
     Returns:
         np.ndarray: 4x4 내부 파라미터 행렬
     """
-    focal_length = aspect / np.tan(fov / 2)
+    focal_length = np.sqrt(1 + aspect**2) / np.tan(fov / 2)
 
     # 카메라에 따라 fx, fy를 사용하는 것이 더 정확한 경우도 있음
     fov_y = 2 * np.arctan(1 / focal_length)
@@ -218,38 +218,3 @@ def inverse_project_points(points: np.ndarray, m_transformation: np.ndarray) -> 
     points = points @ np.linalg.inv(m_transformation)
 
     return points
-
-if __name__ == "__main__":
-    import cv2
-    import matplotlib.pyplot as plt
-
-    image = cv2.imread("um_000012.png")
-    image_shape = (image.shape[1], image.shape[0])
-
-    points = np.array([
-        [6.3, 0, -1.65],
-        [6.3, 15, -1.65],
-        [6.3, -15, -1.65],
-        [50.0, 0, -1.65],
-        [50.0, 10, -1.65],
-        [50.0, -10, -1.65],
-    ])
-
-    rotation_degree = (90, -90, 0)
-    # translation = (0.06, -0.08, -0.27)
-    translation = (0.06, -7.631618000000e-02, -2.717806000000e-01)
-    fov_degree = 85.7
-
-    m_transformation = get_transformation_matrix(image_shape, np.deg2rad(fov_degree), np.deg2rad(rotation_degree), translation).T
-
-    projected_points, valid_indices = project_points(points, m_transformation, image_shape)
-    
-    for point in projected_points:
-        cv2.circle(image, (int(point[0]), int(point[1])), 5, (0, 0, 255), -1)
-
-    cv2.imshow("image", image)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-    
-
