@@ -46,14 +46,14 @@ if resize_ratio != 1:
     right = cv2.resize(right, (0, 0), fx=resize_ratio, fy=resize_ratio, interpolation=cv2.INTER_CUBIC).astype(np.int32)
 
 # disparity_map = compute_block_matching(left, right, 3, 64, method="ncc")
-disparity_map_left = compute_sgm(left, right, 64*10, 10, 120, False)
-disparity_map_right = compute_sgm(right, left, 64*10, 10, 120, True)
+# disparity_map_left = compute_sgm(left, right, 64*10, 10, 120, False)
+# disparity_map_right = compute_sgm(right, left, 64*10, 10, 120, True)
 
-np.save('disparity_map_venus_left_1_p.npy', disparity_map_left)
-np.save('disparity_map_venus_right_1_p.npy', disparity_map_right)
+# np.save('disparity_map_venus_left_1_p.npy', disparity_map_left)
+# np.save('disparity_map_venus_right_1_p.npy', disparity_map_right)
 
-# disparity_map_left = np.load('disparity_map_venus_left_1.npy')
-# disparity_map_right = np.load('disparity_map_venus_right_1.npy')
+disparity_map_left = np.load('disparity_map_venus_left_1.npy')
+disparity_map_right = np.load('disparity_map_venus_right_1.npy')
 
 # disparity_map_left = compare_left_right_disparity(disparity_map_left, disparity_map_right)
 
