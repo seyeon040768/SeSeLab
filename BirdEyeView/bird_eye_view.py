@@ -2,10 +2,6 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 import calibration
-import time
-import cProfile
-import pstats
-from pstats import SortKey
 
 def get_map_matrix(m_transformation: np.ndarray, x_range: tuple[float, float], y_range: tuple[float, float], 
                    bev_pixel_interval: tuple[float, float], camera_height: float) -> np.ndarray:
@@ -78,8 +74,6 @@ def make_bev_image(image: np.ndarray, map_matrix: np.ndarray) -> np.ndarray:
     return bev_image
 
 if __name__ == "__main__":
-    pr = cProfile.Profile()
-    
     image_path = "./1.jpg"
     image = cv2.imread(image_path)
     image_shape = (image.shape[1], image.shape[0])
@@ -98,17 +92,9 @@ if __name__ == "__main__":
     x_range = (6.3, 50)
     y_range = (-10, 10)
     bev_pixel_interval = (0.05, 0.05)
-
-    pr.enable()
     
     map_matrix = get_map_matrix(m_transformation, x_range, y_range, bev_pixel_interval, camera_height)
     bev_image = make_bev_image(image, map_matrix)
-    
-    pr.disable()
-    
-    stats = pstats.Stats(pr)
-    stats.sort_stats(SortKey.CUMULATIVE)
-    stats.print_stats(20)
     
     plt.figure(figsize=(10, 5))
 
@@ -129,4 +115,3 @@ if __name__ == "__main__":
     plt.savefig('bev_result.png')
 
     plt.show()
-
