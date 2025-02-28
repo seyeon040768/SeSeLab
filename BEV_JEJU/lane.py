@@ -34,6 +34,33 @@ class Window:
         cropped = image[left_up[1]:right_down[1], left_up[0]:right_down[0]]
 
         return cropped
+    
+    @staticmethod
+    def get_mean_x(cls, cropped):
+        indices = np.where(cropped > 0)[1]
+        mean = np.mean(indices)
+
+        return mean
+    
+    @staticmethod
+    def get_direction(cls, cropped):
+        # 상하 반 나눠서 방향 벡터 계산
+        half_h = cropped.shape[0] // 2
+
+        top_points = np.argwhere(cropped[:half_h, :] > 0)
+        bottom_points = np.argwhere(cropped[half_h:, :] > 0)
+        bottom_points[:, 0] += half_h
+
+        top_mean = np.mean(top_points, axis=0)
+        bottom_mean = np.mean(bottom_points, axis=0)
+
+        dir_vector = (top_mean - bottom_mean)[::-1] # 이미지는 (y, x), window는 (x, y)
+        dir_vector = dir_vector / np.linalg.norm(dir_vector)
+
+        return dir_vector
+
+
+
 
 class SlidingWindows:
     def __init__(self, image_shape, lane_width, window_width, window_count):
@@ -65,8 +92,31 @@ class SlidingWindows:
         return edged
 
     def align_windows(self, image):
-        for left_window, right_window in zip(self.left_windows, self.right_windows):
+        prev_win_distance = self.lane_width
+        prev_win_left_dir = np.array([0.0, -1.0], dtype=np.float64)
+        prev_win_right_dir = np.array([0.0, -1.0], dtype=np.float64)
+
+        for i, (left_window, right_window) in enumerate(zip(self.left_windows, self.right_windows)):
+            prev_frame_distance = right_window.center[0] - left_window.center[0]
+            prev_frame_left_dir = left_window.direction
+            prev_frame_right_dir = right_window.direction
+
             left_cropped = left_window.crop(image)
+            right_cropped = right_window.crop(image)
+
+            left_mean = Window.get_mean_x(left_cropped)
+            right_mean = Window.get_mean_x(right_cropped)
+            distance = right_mean - left_mean
+
+
+            left_dir = Window.get_direction(left_cropped)
+            right_dir = Window.get_direction(right_cropped)
+
+
+
+
+
+
 
 
     def draw_windows(self, image):
@@ -128,7 +178,7 @@ if __name__ == "__main__":
     bev = BEV(image_shape, m_transformation, x_range, y_range, bev_pixel_interval, camera_height)
 
     lane_width = bev.convert_length_y_world_to_bev(0.5)
-    window_width = bev.convert_length_y_world_to_bev(0.2)
+    window_width = bev.convert_length_y_world_to_bev(0.3)
     sliding_windows = SlidingWindows(bev.bev_shape, lane_width, window_width, 15)
 
     while True:
@@ -143,5 +193,5 @@ if __name__ == "__main__":
 
         sw_image = sliding_windows.draw_windows(preprocessed_image)
 
-        plt.imshow(bev_image)
+        plt.imshow(sw_image)
         plt.show()
