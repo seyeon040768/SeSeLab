@@ -92,9 +92,13 @@ class SlidingWindows:
         return edged
 
     def align_windows(self, image):
+        prev_left_mean = (self.image_shape[0] - self.lane_width) / 2.0
+        prev_right_mean = (self.image_shape[0] + self.lane_width) / 2.0
         prev_win_distance = self.lane_width
         prev_win_left_dir = np.array([0.0, -1.0], dtype=np.float64)
         prev_win_right_dir = np.array([0.0, -1.0], dtype=np.float64)
+        prev_win_center_dir = (prev_win_left_dir + prev_win_right_dir) / 2.0
+        prev_win_center_x = self.image_shape[0] / 2.0
 
         for i, (left_window, right_window) in enumerate(zip(self.left_windows, self.right_windows)):
             prev_frame_distance = right_window.center[0] - left_window.center[0]
@@ -104,13 +108,23 @@ class SlidingWindows:
             left_cropped = left_window.crop(image)
             right_cropped = right_window.crop(image)
 
+            # cropped 기준 x 좌표
             left_mean = Window.get_mean_x(left_cropped)
             right_mean = Window.get_mean_x(right_cropped)
+            center_x = (left_mean + right_mean) / 2.0
+
+            # left, right 사이 거리
             distance = right_mean - left_mean
 
-
+            # cropped 기준 방향 벡터
             left_dir = Window.get_direction(left_cropped)
             right_dir = Window.get_direction(right_cropped)
+            center_dir = (left_dir + right_dir) / 2.0
+
+            # 이전 window와의 x 차이
+            left_diff = left_mean - prev_left_mean
+            right_diff = right_mean - prev_right_mean
+            center_diff = center_x - prev_win_center_x
 
 
 
