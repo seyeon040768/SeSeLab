@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+import yaml
 
 import calibration
 from calibration import get_transformation_matrix
@@ -25,15 +26,13 @@ class Window:
         return self.center, self.shape
 
     def arrange_by_prev_win(self, prev_win_x, prev_win_dir):
-        next_dir = (prev_win_dir + self.direction) / 2.0
+        next_dir = prev_win_dir + self.direction
         move_amount = self.shape[1] * next_dir[0] / np.abs(next_dir[1])
         move_amount = np.clip(move_amount, -self.shape[0], self.shape[0])
         new_x = prev_win_x + move_amount
 
-        diff = new_x - self.center[0]
-        # diff = np.clip(0, -self.shape[0], self.shape[0])
-
-        self.center[0] += diff
+        # TODO: 가중치 yaml 저장
+        self.center[0] = new_x*0.7 + self.center[0]*0.3
 
     def crop(self, image):
         left_up, right_down = self.xyxy
@@ -60,32 +59,23 @@ class Window:
     def get_direction(self, image):
         cropped = self.crop(image)
 
-        # 상하 반 나눠서 방향 벡터 계산
-        half_h = cropped.shape[0] // 2
+        mask = cropped > 0
+        counts = np.sum(mask, axis=1)
 
-        top_points = np.argwhere(cropped[:half_h, :] > 0)
-        bottom_points = np.argwhere(cropped[half_h:, :] > 0)
-
-        if len(top_points) == 0 and len(bottom_points) == 0:
+        valid_rows = np.where(counts > 0)[0]
+        if valid_rows.size < 2:
             return False, np.array([0.0, 0.0])
-        if len(top_points) == 0:
-            bottom_mean = np.mean(bottom_points, axis=0) + half_h
-            dir = self.half_shape - bottom_mean
-        elif len(bottom_points) == 0:
-            top_mean = np.mean(top_points, axis=0)
-            dir = top_mean - self.half_shape
-        else:
-            bottom_mean = np.mean(bottom_points, axis=0) + half_h
-            bottom_center_dir = self.half_shape - bottom_mean
+        
+        mean_x = np.sum(mask[valid_rows] * np.arange(cropped.shape[1]), axis=1) / counts[valid_rows]
+        mean_points = np.vstack([mean_x, valid_rows]).T
 
-            top_mean = np.mean(top_points, axis=0)
-            center_top_dir = top_mean - self.half_shape
-
-            dir = (bottom_center_dir + center_top_dir) / 2.0
+        dir_vectors = mean_points[:-1] - mean_points[1:]
+        dir = np.mean(dir_vectors, axis=0)
         
         dir = dir / np.linalg.norm(dir)
 
         return True, dir
+
 
 
 
@@ -119,14 +109,18 @@ class SlidingWindows:
 
         return edged
 
-    def align_windows(self, image):
+    def align_windows(self, image, distance_weights=(0.5, 0.5)):
         accumulated_dir = (self.left_windows[0].direction + self.right_windows[0].direction) / 2.0
         prev_left_x = (self.image_shape[0] - self.lane_width) / 2.0
         prev_right_x = (self.image_shape[0] + self.lane_width) / 2.0
+        prev_left_dir = self.left_windows[0].direction
+        prev_right_dir = self.right_windows[0].direction
         for i, (left_window, right_window) in enumerate(zip(self.left_windows, self.right_windows)):
             # 1. 초기 위치 설정
             left_window.arrange_by_prev_win(prev_left_x, accumulated_dir)
             right_window.arrange_by_prev_win(prev_right_x, accumulated_dir)
+
+            arranged = self.draw_windows(image)
 
             # 2. 평균 x 계산 및 정렬(값 받으면 정렬, 못 받으면 그대로)
             left_mean_senti, left_mean = left_window.get_mean_x(image)
@@ -134,14 +128,58 @@ class SlidingWindows:
             left_window.center[0] += left_mean
             right_window.center[0] += right_mean
 
-            # 3. 방향 벡터 계산
-            left_dir_senti, left_dir = left_window.get_direction(image)
-            left_dir = left_dir if left_dir_senti else accumulated_dir
-            right_dir_senti, right_dir = right_window.get_direction(image)
-            right_dir = right_dir if right_dir_senti else accumulated_dir
-            center_dir = (left_dir + right_dir) / 2.0
+            mean_arranged = self.draw_windows(image)
 
-            accumulated_dir = (accumulated_dir + center_dir) / 2.0
+            # 3. 방향 벡터 계산 TODO: 가중치화
+            left_dir_weight, right_dir_weight = 0.5, 0.5
+            left_dir_senti, left_dir = left_window.get_direction(image)
+            if not left_dir_senti:
+                left_dir = accumulated_dir
+                left_dir_weight -= 0.2
+                right_dir_weight += 0.2
+            else:
+                left_dir = left_dir * 0.7 + prev_left_dir * 0.3
+            right_dir_senti, right_dir = right_window.get_direction(image)
+            if not right_dir_senti:
+                right_dir = accumulated_dir
+                left_dir_weight += 0.2
+                right_dir_weight -= 0.2
+            else:
+                right_dir = right_dir * 0.7 + prev_right_dir * 0.3
+            center_dir = left_dir * left_dir_weight + right_dir * right_dir_weight
+
+            accumulated_dir = (accumulated_dir + center_dir) / 2.0 # TODO: 가중치화
+            accumulated_dir = accumulated_dir / np.linalg.norm(accumulated_dir)
+            
+
+            left_rectify = 0.0
+            right_rectify = 0.0
+            # 4. 거리 보정
+            distance = right_window.center[0] - left_window.center[0]
+            distance_diff = (distance - self.lane_width) / 2.0
+            left_rectify += distance_diff * distance_weights[0] if left_mean_senti else distance_diff
+            right_rectify += -distance_diff * distance_weights[1] if right_mean_senti else -distance_diff
+
+
+            # 값 업데이트
+            left_window.update(left_window.center[0] + left_rectify, left_dir)
+            right_window.update(right_window.center[0] + right_rectify, right_dir)
+
+            # prev 값 업데이트
+            prev_left_x = left_window.center[0]
+            prev_right_x = right_window.center[0]
+            prev_left_dir = left_dir
+            prev_right_dir = right_dir
+
+            final = self.draw_windows(image)
+
+            # plt.subplot(311)
+            # plt.imshow(arranged)
+            # plt.subplot(312)
+            # plt.imshow(mean_arranged)
+            # plt.subplot(313)
+            # plt.imshow(final)
+            # plt.show()
 
 
 
@@ -182,6 +220,10 @@ class SlidingWindows:
 
 
 if __name__ == "__main__":
+    with open("lane_parameter.yaml", encoding='UTF8') as f:
+        parameters = yaml.load(f, Loader=yaml.FullLoader)
+    print(parameters)
+
     cap = cv2.VideoCapture("dataset/video2.mp4")
     
     if not cap.isOpened():
@@ -194,42 +236,39 @@ if __name__ == "__main__":
         exit()
 
     image_shape = (image.shape[1], image.shape[0])
-    print(image_shape)
+    print("image shape:", image_shape)
 
-    camera_matrix = np.array([
-        [345.727618, 0.0, 320.0],
-        [0.0, 346.002121, 240.0],
-        [0.0, 0.0, 1.0]
-    ])
-    dist_coeffs = np.array([-0.350124, 0.098598, 0, 0.001998, 0.000177])
+    camera_matrix = np.array(parameters["camera_matrix"], dtype=np.float64).reshape((3, 3))
+    dist_coeffs = np.array(parameters["dist_coeffs"], dtype=np.float64)
 
-    axis_rotation_degree = (90, -90, 0)
-    translation = (0, 0, 0)
-    rotation_degree = (0, 0, 0)
-    fov_degree = 72.5
-    camera_height = 0.3
+    axis_rotation_degree = tuple(parameters["axis_rotation_degree"])
+    translation = tuple(parameters["translation"])
+    rotation_degree = tuple(parameters["rotation_degree"])
+    fov_degree = parameters["fov_degree"]
+    camera_height = parameters["camera_height"]
 
     axis_rotation_radian = np.deg2rad(axis_rotation_degree)
     rotation_radian = np.deg2rad(rotation_degree)
     fov_radian = np.deg2rad(fov_degree)
 
     w, h = image_shape
-
     new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, dist_coeffs, (w, h), 1, (w, h))
     m_intrinsic = np.eye(4)
     m_intrinsic[:3, :3] = new_camera_matrix
     m_extrinsic = calibration.get_extrinsic_matrix(axis_rotation_radian, translation, rotation_radian)
     m_transformation = (m_intrinsic @ m_extrinsic).T
 
-    x_range = (0.32, 1.7)
-    y_range = (-3, 3)
-    bev_pixel_interval = (0.005, 0.01)
+    x_range = tuple(parameters["x_range"])
+    y_range = tuple(parameters["y_range"])
+    bev_pixel_interval = tuple(parameters["bev_pixel_interval"])
 
     bev = BEV(image_shape, m_transformation, x_range, y_range, bev_pixel_interval, camera_height)
+    print("bev shape:", bev.bev_shape)
 
-    lane_width = bev.convert_length_y_world_to_bev(0.5)
-    window_width = bev.convert_length_y_world_to_bev(0.35)
-    sliding_windows = SlidingWindows(bev.bev_shape, lane_width, window_width, 15)
+    lane_width = bev.convert_length_y_world_to_bev(parameters["lane_width"])
+    window_width = bev.convert_length_y_world_to_bev(parameters["window_width"])
+    window_count = parameters["window_count"]
+    sliding_windows = SlidingWindows(bev.bev_shape, lane_width, window_width, window_count)
 
     while True:
         ret, image = cap.read()
