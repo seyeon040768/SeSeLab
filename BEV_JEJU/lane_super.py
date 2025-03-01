@@ -24,13 +24,14 @@ class Window:
     def xywh(self):
         return self.center, self.shape
 
-    def arrange(self, prev_win_x, prev_win_dir):
-        move_amount = self.shape[1] * prev_win_dir[0] / np.abs(prev_win_dir[1])
+    def arrange_by_prev_win(self, prev_win_x, prev_win_dir):
+        next_dir = (prev_win_dir + self.direction) / 2.0
+        move_amount = self.shape[1] * next_dir[0] / np.abs(next_dir[1])
         move_amount = np.clip(move_amount, -self.shape[0], self.shape[0])
         new_x = prev_win_x + move_amount
 
         diff = new_x - self.center[0]
-        diff = np.clip(0, -self.shape[0], self.shape[0])
+        # diff = np.clip(0, -self.shape[0], self.shape[0])
 
         self.center[0] += diff
 
@@ -45,34 +46,46 @@ class Window:
         self.center[0] = x
         self.direction = direction
     
-    @staticmethod
-    def get_mean_x(cropped):
+    def get_mean_x(self, image):
+        cropped = self.crop(image)
+
         indices = np.where(cropped > 0)[1]
         if len(indices) == 0:
             return False, 0.0
         
         mean = np.mean(indices)
 
-        return True, mean
+        return True, mean - self.half_shape[0]
     
-    @staticmethod
-    def get_direction(cropped):
+    def get_direction(self, image):
+        cropped = self.crop(image)
+
         # 상하 반 나눠서 방향 벡터 계산
         half_h = cropped.shape[0] // 2
 
         top_points = np.argwhere(cropped[:half_h, :] > 0)
         bottom_points = np.argwhere(cropped[half_h:, :] > 0)
-        if len(top_points) == 0 or len(bottom_points) == 0:
-            return np.array([np.nan, np.nan])
-        bottom_points[:, 0] += half_h
 
-        top_mean = np.mean(top_points, axis=0)
-        bottom_mean = np.mean(bottom_points, axis=0)
+        if len(top_points) == 0 and len(bottom_points) == 0:
+            return False, np.array([0.0, 0.0])
+        if len(top_points) == 0:
+            bottom_mean = np.mean(bottom_points, axis=0) + half_h
+            dir = self.half_shape - bottom_mean
+        elif len(bottom_points) == 0:
+            top_mean = np.mean(top_points, axis=0)
+            dir = top_mean - self.half_shape
+        else:
+            bottom_mean = np.mean(bottom_points, axis=0) + half_h
+            bottom_center_dir = self.half_shape - bottom_mean
 
-        dir_vector = (top_mean - bottom_mean)[::-1] # 이미지는 (y, x), window는 (x, y)
-        dir_vector = dir_vector / np.linalg.norm(dir_vector)
+            top_mean = np.mean(top_points, axis=0)
+            center_top_dir = top_mean - self.half_shape
 
-        return dir_vector
+            dir = (bottom_center_dir + center_top_dir) / 2.0
+        
+        dir = dir / np.linalg.norm(dir)
+
+        return True, dir
 
 
 
@@ -107,91 +120,33 @@ class SlidingWindows:
         return edged
 
     def align_windows(self, image):
-        prev_left_mean = (self.image_shape[0] - self.lane_width) / 2.0
-        prev_right_mean = (self.image_shape[0] + self.lane_width) / 2.0
-        prev_win_distance = self.lane_width
-        prev_win_left_dir = np.array([0.0, -1.0], dtype=np.float64)
-        prev_win_right_dir = np.array([0.0, -1.0], dtype=np.float64)
-        prev_win_center_dir = (prev_win_left_dir + prev_win_right_dir) / 2.0
-        prev_win_center_x = self.image_shape[0] / 2.0
-
+        accumulated_dir = (self.left_windows[0].direction + self.right_windows[0].direction) / 2.0
+        prev_left_x = (self.image_shape[0] - self.lane_width) / 2.0
+        prev_right_x = (self.image_shape[0] + self.lane_width) / 2.0
         for i, (left_window, right_window) in enumerate(zip(self.left_windows, self.right_windows)):
-            # 처음 위치 설정: 이전 window 위치, 방향 벡터 참고
-            left_window.arrange(prev_left_mean, prev_win_center_dir)
-            right_window.arrange(prev_right_mean, prev_win_center_dir)
+            # 1. 초기 위치 설정
+            left_window.arrange_by_prev_win(prev_left_x, accumulated_dir)
+            right_window.arrange_by_prev_win(prev_right_x, accumulated_dir)
 
-            first = self.draw_windows(image, True, True)
+            # 2. 평균 x 계산 및 정렬(값 받으면 정렬, 못 받으면 그대로)
+            left_mean_senti, left_mean = left_window.get_mean_x(image)
+            right_mean_senti, right_mean = right_window.get_mean_x(image)
+            left_window.center[0] += left_mean
+            right_window.center[0] += right_mean
 
-            # window 영역 crop
-            left_cropped = left_window.crop(image)
-            right_cropped = right_window.crop(image)
-
-            # cropped 기준 x 좌표, 방향 벡터
-            left_mean_senti, left_mean = Window.get_mean_x(left_cropped)
-            right_mean_senti, right_mean = Window.get_mean_x(right_cropped)
-            if left_mean_senti:
-                left_mean = left_mean - self.half_window_shape[0]
-            if right_mean_senti:
-                right_mean = right_mean - self.half_window_shape[0]
-            left_mean += left_window.center[0]
-            right_mean += right_window.center[0]
-
-            # 평균점으로 이동 후 다시 crop
-            left_window.center[0] = left_mean
-            right_window.center[0] = right_mean
-            left_cropped = left_window.crop(image)
-            right_cropped = right_window.crop(image)
-
-            second = self.draw_windows(image, True, True)
-
-            left_dir = Window.get_direction(left_cropped)
-            left_dir = prev_win_left_dir if np.isnan(left_dir)[0] else left_dir
-            right_dir = Window.get_direction(right_cropped)
-            right_dir = prev_win_right_dir if np.isnan(right_dir)[0] else right_dir
-            center_x = (left_mean + right_mean) / 2.0
+            # 3. 방향 벡터 계산
+            left_dir_senti, left_dir = left_window.get_direction(image)
+            left_dir = left_dir if left_dir_senti else accumulated_dir
+            right_dir_senti, right_dir = right_window.get_direction(image)
+            right_dir = right_dir if right_dir_senti else accumulated_dir
             center_dir = (left_dir + right_dir) / 2.0
 
-
-            # left, right 사이 거리
-            distance = right_mean - left_mean
-
-            # 이전 window와의 x 차이
-            left_diff = left_mean - prev_left_mean
-            right_diff = right_mean - prev_right_mean
-            center_diff = center_x - prev_win_center_x
-
-            # 거리 기준 정렬
-            distance_diff = distance - prev_win_distance
-            left_distance_align = distance_diff / 2.0
-            right_distance_align =  -distance_diff / 2.0
-
-            left_diff_align = center_diff - left_diff
-            right_diff_align = center_diff - right_diff
-
-            left_mean += left_distance_align*0 + left_diff_align*0
-            right_mean += right_distance_align*0 + right_diff_align*0
+            accumulated_dir = (accumulated_dir + center_dir) / 2.0
 
 
-            prev_left_mean = left_mean
-            prev_right_mean = right_mean
-            prev_win_distance = right_mean - left_mean
-            prev_win_left_dir = left_dir
-            prev_win_right_dir = right_dir
-            prev_win_center_dir = (prev_win_left_dir + prev_win_right_dir) / 2.0
-            prev_win_center_x = (left_mean + right_mean) / 2.0
 
-            self.left_windows[i].update(left_mean, left_dir)
-            self.right_windows[i].update(right_mean, right_dir)
 
-            third = self.draw_windows(image, True, True)
 
-            # plt.subplot(311)
-            # plt.imshow(first)
-            # plt.subplot(312)
-            # plt.imshow(second)
-            # plt.subplot(313)
-            # plt.imshow(third)
-            # plt.show()
 
     def draw_windows(self, image, draw_arrow=True, draw_center=True):
         image_copy = image.copy()
@@ -289,20 +244,10 @@ if __name__ == "__main__":
 
         sw_image = sliding_windows.draw_windows(preprocessed_image)
 
-        hls = cv2.cvtColor(bev_image, cv2.COLOR_BGR2HLS)
-        S_channel = hls[:,:,2]
-        blurred_S = cv2.GaussianBlur(S_channel, (5, 5), 0)
-    
-        # 적응형 임계처리: 조명 변화가 심한 환경에서 효과적
-        adaptive_thresh = cv2.adaptiveThreshold(cv2.cvtColor(bev_image, cv2.COLOR_BGR2GRAY), 255, 
-                                                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                                cv2.THRESH_BINARY, 
-                                                11, 2)
-
         bev_image = cv2.cvtColor(bev_image, cv2.COLOR_BGR2GRAY)
 
         vis_image_1 = np.hstack([bev_image, preprocessed_image])
-        vis_image_2 = np.hstack([sw_image, adaptive_thresh])
+        vis_image_2 = np.hstack([sw_image, np.zeros_like(sw_image)])
         vis_image = np.vstack([vis_image_1, vis_image_2])
 
         cv2.imshow("img", vis_image)
