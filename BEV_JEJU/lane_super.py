@@ -183,7 +183,7 @@ class SlidingWindows:
             # plt.show()
 
     def draw_windows(self, image, draw_windows=True, draw_window_arrow=True, draw_window_center=True,
-                     draw_center=True, draw_center_arrow=True):
+                     draw_center=True, draw_center_arrow=True, draw_connected_line=True):
         image_copy = image.copy()
         scale = self.window_shape[1] * 0.7
         for left_window, right_window in zip(self.left_windows, self.right_windows):
