@@ -18,6 +18,7 @@ class BEV:
 
         projected_points = self.map_matrix.reshape(-1, 2)
 
+        # 유효 영역 계산
         self.valid_mask = (0 <= projected_points[:, 0]) & (projected_points[:, 0] <= self.origin_image_shape[0] - 1) & \
                     (0 <= projected_points[:, 1]) & (projected_points[:, 1] <= self.origin_image_shape[1] - 1)
         self.valid_area = self.valid_mask.reshape((self.output_height, self.output_width))
@@ -43,6 +44,31 @@ class BEV:
 
         self.valid_area_margined = self.valid_area & ~self.boundary_mask
 
+        # mapping 준비
+        # np.modf를 이용해 소수부와 정수부(바닥 좌표)를 한 번에 계산
+        frac, floor_coords = np.modf(self.valid_points)
+        floor_coords = floor_coords.astype(np.int32)
+
+        # 바닥 좌표와 보간을 위한 인덱스 계산
+        self.x0 = floor_coords[:, 0]
+        self.y0 = floor_coords[:, 1]
+        self.x1 = self.x0 + 1
+        self.y1 = self.y0 + 1
+
+        # 보간 계수
+        dx = frac[:, 0:1]
+        dy = frac[:, 1:2]
+        inv_dx = 1 - dx
+        inv_dy = 1 - dy
+
+        # 각각의 기여도(가중치) 계산
+        w_lt = inv_dx * inv_dy
+        w_rt = dx * inv_dy
+        w_lb = inv_dx * dy
+        w_rb = dx * dy
+
+        self.weight_vector = np.hstack([w_lt, w_rt, w_lb, w_rb]).T
+
 
     def get_map_matrix(self) -> np.ndarray:
         x_samples = np.arange(self.x_range[0], self.x_range[1]+self.bev_pixel_interval[0], self.bev_pixel_interval[0])[::-1]
@@ -59,44 +85,21 @@ class BEV:
         return map_matrix
 
     def make_bev_image(self, image: np.ndarray) -> np.ndarray:
-        bev_image = np.zeros((self.output_height, self.output_width, 3), dtype=np.uint8)
+        bev_image = np.zeros((self.output_height, self.output_width), dtype=np.uint8)
         
-        # np.modf를 이용해 소수부와 정수부(바닥 좌표)를 한 번에 계산
-        frac, floor_coords = np.modf(self.valid_points)
-        floor_coords = floor_coords.astype(np.int32)
-        
-        # 바닥 좌표와 보간을 위한 인덱스 계산
-        x0 = floor_coords[:, 0]
-        y0 = floor_coords[:, 1]
-        x1 = x0 + 1
-        y1 = y0 + 1
-        
+
         # 이미지의 네 모서리 색상 추출
-        left_top  = image[y0, x0]
-        right_top = image[y0, x1]
-        left_bottom = image[y1, x0]
-        right_bottom = image[y1, x1]
-        
-        # 보간 계수
-        dx = frac[:, 0:1]
-        dy = frac[:, 1:2]
-        inv_dx = 1 - dx
-        inv_dy = 1 - dy
-        
-        # 각각의 기여도(가중치) 계산
-        w_lt = inv_dx * inv_dy
-        w_rt = dx * inv_dy
-        w_lb = inv_dx * dy
-        w_rb = dx * dy
+        left_top = image[self.y0, self.x0]
+        right_top = image[self.y0, self.x1]
+        left_bottom = image[self.y1, self.x0]
+        right_bottom = image[self.y1, self.x1]
+        colors = np.vstack([left_top, right_top, left_bottom, right_bottom])
         
         # 네 모서리 색상을 가중치에 따라 보간
-        interpolated = (left_top  * w_lt +
-                        right_top * w_rt +
-                        left_bottom * w_lb +
-                        right_bottom * w_rb).astype(np.uint8)
+        interpolated = np.sum(self.weight_vector * colors, axis=0).astype(np.uint8)
         
         # 유효한 위치(valid_mask)를 bev_image에 할당
-        bev_image.reshape(-1, 3)[self.valid_mask] = interpolated
+        bev_image.reshape(-1)[self.valid_mask] = interpolated
         
         return bev_image
 

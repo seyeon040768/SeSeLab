@@ -32,7 +32,7 @@ class Window:
         new_x = prev_win_x + move_amount
 
         # TODO: 가중치 yaml 저장
-        self.center[0] = new_x*0.7 + self.center[0]*0.3
+        self.center[0] = new_x*0.5 + self.center[0]*0.5
 
     def crop(self, image):
         left_up, right_down = self.xyxy
@@ -77,15 +77,16 @@ class Window:
         return True, dir
 
 
-
-
-
 class SlidingWindows:
-    def __init__(self, image_shape, lane_width, window_width, window_count):
+    def __init__(self, image_shape, lane_image_width, window_image_width, parameters):
         self.image_shape = image_shape
-        self.lane_width = lane_width
-        self.window_shape = np.array([window_width, image_shape[1] / window_count], dtype=np.float64)
+        self.lane_width = lane_image_width
+        self.window_count = parameters["window_count"]
+        self.window_shape = np.array([window_image_width, image_shape[1] / self.window_count], dtype=np.float64)
         self.half_window_shape = self.window_shape / 2.0
+
+        self.dir_senti_weight = parameters["dir_senti_weight"]
+        self.dir_prev_weight = parameters["dir_prev_weight"]
 
         self.left_windows = []
         self.right_windows = []
@@ -93,7 +94,7 @@ class SlidingWindows:
         left_center = [(self.image_shape[0] - self.lane_width) / 2.0, self.image_shape[1] - self.half_window_shape[1]]
         right_center = [(self.image_shape[0] + self.lane_width) / 2.0, self.image_shape[1] - self.half_window_shape[1]]
 
-        for i in range(window_count):
+        for i in range(self.window_count):
             self.left_windows.append(Window(np.array(left_center, dtype=np.float64), self.window_shape))
             self.right_windows.append(Window(np.array(right_center, dtype=np.float64), self.window_shape))
 
@@ -109,7 +110,7 @@ class SlidingWindows:
 
         return edged
 
-    def align_windows(self, image, distance_weights=(0.5, 0.5)):
+    def align_windows(self, image):
         accumulated_dir = (self.left_windows[0].direction + self.right_windows[0].direction) / 2.0
         prev_left_x = (self.image_shape[0] - self.lane_width) / 2.0
         prev_right_x = (self.image_shape[0] + self.lane_width) / 2.0
@@ -120,7 +121,7 @@ class SlidingWindows:
             left_window.arrange_by_prev_win(prev_left_x, accumulated_dir)
             right_window.arrange_by_prev_win(prev_right_x, accumulated_dir)
 
-            arranged = self.draw_windows(image)
+            # arranged = self.draw_windows(image)
 
             # 2. 평균 x 계산 및 정렬(값 받으면 정렬, 못 받으면 그대로)
             left_mean_senti, left_mean = left_window.get_mean_x(image)
@@ -128,24 +129,24 @@ class SlidingWindows:
             left_window.center[0] += left_mean
             right_window.center[0] += right_mean
 
-            mean_arranged = self.draw_windows(image)
+            # mean_arranged = self.draw_windows(image)
 
             # 3. 방향 벡터 계산 TODO: 가중치화
             left_dir_weight, right_dir_weight = 0.5, 0.5
             left_dir_senti, left_dir = left_window.get_direction(image)
             if not left_dir_senti:
                 left_dir = accumulated_dir
-                left_dir_weight -= 0.2
-                right_dir_weight += 0.2
+                left_dir_weight -= self.dir_senti_weight
+                right_dir_weight += self.dir_senti_weight
             else:
-                left_dir = left_dir * 0.7 + prev_left_dir * 0.3
+                left_dir = left_dir * (1.0 - self.dir_prev_weight) + prev_left_dir * self.dir_prev_weight
             right_dir_senti, right_dir = right_window.get_direction(image)
             if not right_dir_senti:
                 right_dir = accumulated_dir
-                left_dir_weight += 0.2
-                right_dir_weight -= 0.2
+                left_dir_weight += self.dir_senti_weight
+                right_dir_weight -= self.dir_senti_weight
             else:
-                right_dir = right_dir * 0.7 + prev_right_dir * 0.3
+                right_dir = right_dir * (1.0 - self.dir_prev_weight) + prev_right_dir * self.dir_prev_weight
             center_dir = left_dir * left_dir_weight + right_dir * right_dir_weight
 
             accumulated_dir = (accumulated_dir + center_dir) / 2.0 # TODO: 가중치화
@@ -157,8 +158,8 @@ class SlidingWindows:
             # 4. 거리 보정
             distance = right_window.center[0] - left_window.center[0]
             distance_diff = (distance - self.lane_width) / 2.0
-            left_rectify += distance_diff * distance_weights[0] if left_mean_senti else distance_diff
-            right_rectify += -distance_diff * distance_weights[1] if right_mean_senti else -distance_diff
+            left_rectify += distance_diff * 0.5 if left_mean_senti else distance_diff
+            right_rectify += -distance_diff * 0.5 if right_mean_senti else -distance_diff
 
 
             # 값 업데이트
@@ -171,7 +172,7 @@ class SlidingWindows:
             prev_left_dir = left_dir
             prev_right_dir = right_dir
 
-            final = self.draw_windows(image)
+            # final = self.draw_windows(image)
 
             # plt.subplot(311)
             # plt.imshow(arranged)
@@ -181,30 +182,26 @@ class SlidingWindows:
             # plt.imshow(final)
             # plt.show()
 
-
-
-
-
-
-    def draw_windows(self, image, draw_arrow=True, draw_center=True):
+    def draw_windows(self, image, draw_windows=True, draw_window_arrow=True, draw_window_center=True,
+                     draw_center=True, draw_center_arrow=True):
         image_copy = image.copy()
-        scale = self.window_shape[1]
+        scale = self.window_shape[1] * 0.7
         for left_window, right_window in zip(self.left_windows, self.right_windows):
-            # 왼쪽 윈도우 사각형 그리기
-            left_lu, left_rd = left_window.xyxy
-            cv2.rectangle(image_copy, left_lu.astype(np.int32), left_rd.astype(np.int32), (255, 0, 0))
+            if draw_windows:
+                # 왼쪽 윈도우 사각형 그리기
+                left_lu, left_rd = left_window.xyxy
+                cv2.rectangle(image_copy, left_lu.astype(np.int32), left_rd.astype(np.int32), (255, 0, 0))
 
-            # 오른쪽 윈도우 사각형 그리기
-            right_lu, right_rd = right_window.xyxy
-            cv2.rectangle(image_copy, right_lu.astype(np.int32), right_rd.astype(np.int32), (255, 0, 0))
+                # 오른쪽 윈도우 사각형 그리기
+                right_lu, right_rd = right_window.xyxy
+                cv2.rectangle(image_copy, right_lu.astype(np.int32), right_rd.astype(np.int32), (255, 0, 0))
             
-            if draw_arrow:
+            if draw_window_arrow:
                 # 왼쪽 윈도우의 중앙과 방향벡터 (중심이 center에 위치)
                 left_offset = left_window.direction * (scale / 2)
                 left_start = (left_window.center - left_offset).astype(np.int32)
                 left_end = (left_window.center + left_offset).astype(np.int32)
                 cv2.arrowedLine(image_copy, tuple(left_start), tuple(left_end), (255, 0, 0), thickness=2, tipLength=0.2)
-                
                 
                 # 오른쪽 윈도우의 중앙과 방향벡터 (중심이 center에 위치)
                 right_offset = right_window.direction * (scale / 2)
@@ -212,9 +209,22 @@ class SlidingWindows:
                 right_end = (right_window.center + right_offset).astype(np.int32)
                 cv2.arrowedLine(image_copy, tuple(right_start), tuple(right_end), (255, 0, 0), thickness=2, tipLength=0.2)
 
-            if draw_center:
+            if draw_window_center:
                 cv2.circle(image_copy, left_window.center.astype(np.int32), 2, (255, 0, 0), -1)
                 cv2.circle(image_copy, right_window.center.astype(np.int32), 2, (255, 0, 0), -1)
+
+            center_point = (left_window.center + right_window.center) / 2.0
+            if draw_center:
+                cv2.circle(image_copy, center_point.astype(np.int32), 2, (255, 0, 0), -1)
+            
+            if draw_center_arrow:
+                direction = left_window.direction + right_window.direction
+                direction = direction / np.linalg.norm(direction)
+
+                center_offset = direction * (scale / 2)
+                center_start = (center_point - center_offset).astype(np.int32)
+                center_end = (center_point + center_offset).astype(np.int32)
+                cv2.arrowedLine(image_copy, center_start, center_end, (255, 0, 0), thickness=2, tipLength=0.2)
 
         return image_copy
 
@@ -222,9 +232,12 @@ class SlidingWindows:
 if __name__ == "__main__":
     with open("lane_parameter.yaml", encoding='UTF8') as f:
         parameters = yaml.load(f, Loader=yaml.FullLoader)
-    print(parameters)
+    print(*parameters)
 
-    cap = cv2.VideoCapture("dataset/video2.mp4")
+    fx, fy = parameters["fx"], parameters["fy"]
+
+    # cap = cv2.VideoCapture("dataset/video2.mp4")
+    cap = cv2.VideoCapture("dataset/school_25.mp4")
     
     if not cap.isOpened():
         print("Error: Could not open video file")
@@ -234,12 +247,14 @@ if __name__ == "__main__":
     if not ret:
         print("Error: Could not read frame")
         exit()
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)        
+    image = cv2.resize(image, (0, 0), fx=fx, fy=fy)
 
     image_shape = (image.shape[1], image.shape[0])
     print("image shape:", image_shape)
 
-    camera_matrix = np.array(parameters["camera_matrix"], dtype=np.float64).reshape((3, 3))
-    dist_coeffs = np.array(parameters["dist_coeffs"], dtype=np.float64)
+    # camera_matrix = np.array(parameters["camera_matrix"], dtype=np.float64).reshape((3, 3))
+    # dist_coeffs = np.array(parameters["dist_coeffs"], dtype=np.float64)
 
     axis_rotation_degree = tuple(parameters["axis_rotation_degree"])
     translation = tuple(parameters["translation"])
@@ -250,13 +265,7 @@ if __name__ == "__main__":
     axis_rotation_radian = np.deg2rad(axis_rotation_degree)
     rotation_radian = np.deg2rad(rotation_degree)
     fov_radian = np.deg2rad(fov_degree)
-
-    w, h = image_shape
-    new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, dist_coeffs, (w, h), 1, (w, h))
-    m_intrinsic = np.eye(4)
-    m_intrinsic[:3, :3] = new_camera_matrix
-    m_extrinsic = calibration.get_extrinsic_matrix(axis_rotation_radian, translation, rotation_radian)
-    m_transformation = (m_intrinsic @ m_extrinsic).T
+    m_transformation = get_transformation_matrix(image_shape, fov_radian, axis_rotation_radian, translation, rotation_radian).T
 
     x_range = tuple(parameters["x_range"])
     y_range = tuple(parameters["y_range"])
@@ -265,16 +274,28 @@ if __name__ == "__main__":
     bev = BEV(image_shape, m_transformation, x_range, y_range, bev_pixel_interval, camera_height)
     print("bev shape:", bev.bev_shape)
 
-    lane_width = bev.convert_length_y_world_to_bev(parameters["lane_width"])
-    window_width = bev.convert_length_y_world_to_bev(parameters["window_width"])
-    window_count = parameters["window_count"]
-    sliding_windows = SlidingWindows(bev.bev_shape, lane_width, window_width, window_count)
+    lane_image_width = bev.convert_length_y_world_to_bev(parameters["lane_width"])
+    window_image_width = bev.convert_length_y_world_to_bev(parameters["window_width"])
+    sliding_windows = SlidingWindows(bev.bev_shape, lane_image_width, window_image_width, parameters)
+
+    bev_image = bev.make_bev_image(image)
+    preprocessed_image = sliding_windows.preprocess_image(bev_image, valid_area=bev.valid_area_margined)
+    sliding_windows.align_windows(preprocessed_image)
+
+    sw_image = sliding_windows.draw_windows(preprocessed_image)
+
+    # cv2.imshow("image", sw_image)
+    # while True:
+    #     if cv2.waitKey(1) & 0xFF == ord('q'):
+    #         exit()
 
     while True:
         ret, image = cap.read()
         if not ret:
             print("Error: Could not read frame") 
             break
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        image = cv2.resize(image, (0, 0), fx=fx, fy=fy)
 
         bev_image = bev.make_bev_image(image)
 
@@ -282,12 +303,15 @@ if __name__ == "__main__":
         sliding_windows.align_windows(preprocessed_image)
 
         sw_image = sliding_windows.draw_windows(preprocessed_image)
+        sw_bev_image = sliding_windows.draw_windows(bev_image, False, False)
 
-        bev_image = cv2.cvtColor(bev_image, cv2.COLOR_BGR2GRAY)
+        # vis_image_1 = np.hstack([bev_image, preprocessed_image])
+        # vis_image_2 = np.hstack([sw_image, sw_bev_image])
+        # vis_image = np.vstack([vis_image_1, vis_image_2])
 
-        vis_image_1 = np.hstack([bev_image, preprocessed_image])
-        vis_image_2 = np.hstack([sw_image, np.zeros_like(sw_image)])
-        vis_image = np.vstack([vis_image_1, vis_image_2])
+        # vis_image = cv2.resize(vis_image, (0, 0), fx=0.65, fy=0.65)
+        # vis_image = sw_image
+        vis_image = sw_bev_image
 
         cv2.imshow("img", vis_image)
         if cv2.waitKey(1) & 0xFF == ord('q'):
